@@ -1,0 +1,11 @@
+{
+  "name": "coriolis",
+  "private": true,
+  "type": "module",
+  "description": "Песочница искусственной тяжести: два корабля на тросе, кольцевая станция",
+  "scripts": {
+    "test": "node --test",
+    "checks": "node test/report.js",
+    "serve": "python3.12 -m http.server -d site 8000"
+  }
+}
