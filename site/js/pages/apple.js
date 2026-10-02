@@ -58,7 +58,7 @@ button(pre, 'С высоты 10 м (грузовой отсек)', () => setP({ 
 button(pre, 'Подбросить вверх', () => setP({ h: 1.5, vFwd: 0, vUp: 3 }));
 button(pre, 'Бросить вперёд 5 м/с', () => setP({ h: 1.5, vFwd: 5, vUp: 0 }));
 button(pre, 'Бросить назад 5 м/с', () => setP({ h: 1.5, vFwd: -5, vUp: 0 }));
-button(pre, 'Назад со скоростью пола → «парит»', () => {
+button(pre, 'Назад со скоростью руки → «парит»', () => {
   const w = rpmToOmega(P.rpm);
   const R = (P.g * G0) / (w * w);
   setP({ geometry: 'ring', h: 1.5, vUp: 0, vFwd: -Math.round(w * (R - 1.5) * 10) / 10 });

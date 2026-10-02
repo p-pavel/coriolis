@@ -86,7 +86,7 @@ function update() {
     ['Запусков Starship (100 т)', num(r.launches, 3)],
     ['Предельная скорость обода для пояса', `${num(r.vMax)} м/с`],
     ['…это радиус при той же тяжести', len(r.RmaxAtG)],
-    ['Прецессия оси на НОО (cos β = 1)', period((2 * Math.PI) / Math.abs(wp))],
+    ['Период прецессии оси на НОО (× 1/cos β)', period((2 * Math.PI) / Math.abs(wp))],
   ]);
 }
 

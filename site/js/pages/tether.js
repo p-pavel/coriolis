@@ -127,11 +127,15 @@ function recompute() {
     document.getElementById('tableB').innerHTML = '';
     return;
   }
-  const cls = ['', '', 'warn', 'bad'][d.comfort.level];
+  const cls = d.heavyTether ? 'warn' : ['', '', 'warn', 'bad'][d.comfort.level];
   v.innerHTML = `<div class="verdict ${cls}">Пол палубы на радиусе <b>${len(d.rDeck)}</b>, трос между носами <b>${len(2 * d.Ra)}</b>.
     ${fixed(P.rpm, 1)} об/мин — ${d.comfort.text}.
     Трос ${mat.name.split(' ')[0]} Ø <b>${len(d.diameter, 2)}</b> весит <b>${mass(d.mTether, 2)}</b> —
-    ${num(d.tetherFraction * 100, 2)} % массы кораблей.</div>`;
+    ${num(d.tetherFraction * 100, 2)} % массы кораблей.${
+      d.heavyTether
+        ? ' <b>Трос тяжелее 5 % массы кораблей:</b> формулы частот качания и колебаний ниже выведены для лёгкого троса и здесь неточны (ошибка до десятков процентов); лебёдка в модели тоже рассчитана на лёгкий трос. Модель справа честнее формул, но тоже приближённая.'
+        : ''
+    }</div>`;
 
   const spinDv = d.w * d.Rcm * (1 + (P.gyration * P.gyration) / (d.Rcm * d.Rcm));
   const prop = P.M * (1 - Math.exp(-spinDv / (ISP * G0)));
@@ -252,7 +256,7 @@ slider(colA, {
   value: S.exag,
   scale: 'log',
   fmt: (v) => `×${num(v, 3)}`,
-  hint: 'поперечные смещения и углы качания — сантиметры и доли градуса',
+  hint: 'поперечные смещения троса — сантиметры, качание кораблей — градусы',
   onInput: (v) => (S.exag = v),
 });
 slider(colA, { label: 'Ускорение времени', min: 0.1, max: 20, step: 0.1, value: S.warp, scale: 'log', fmt: (v) => `×${num(v, 2)}`, onInput: (v) => (S.warp = v) });

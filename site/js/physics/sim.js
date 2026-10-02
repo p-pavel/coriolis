@@ -106,10 +106,12 @@ export class TetherSim {
   }
 
   // Шаг по условию устойчивости явной схемы для самого короткого отрезка.
+  // Лебёдка меняет длины в s раз, а массы узлов — нет: жёсткость EA/(s·l0), масса ρA·l0,
+  // поэтому предельный шаг ∝ √s·l0/c, а не s·l0/c.
   stableDt() {
     let lmin = Infinity;
     for (let j = 0; j < this.N; j++) lmin = Math.min(lmin, this.l0[j]);
-    return Math.min((0.35 * this.s * lmin) / this.cWave, 2e-3);
+    return Math.min((0.35 * Math.sqrt(this.s) * lmin) / this.cWave, 2e-3);
   }
 
   syncNoses() {

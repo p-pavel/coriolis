@@ -32,6 +32,15 @@ export function spinAxisPrecession({ n, w, beta = 0, inertiaRatio = 0.5 }) {
   return -1.5 * ((n * n) / w) * inertiaRatio * Math.cos(beta);
 }
 
+/**
+ * Продольные колебания («подпрыгивание»): половина троса — пружина жёсткости EA/l0
+ * (l0 — длина половины троса без нагрузки), груз M на конце, поправка Рэлея на массу
+ * троса (m_троса/6 — треть массы половины троса) и центробежная добавка 3ω².
+ */
+export function bounceOmega({ EA, l0, M, mTether, w }) {
+  return Math.sqrt(EA / l0 / (M + mTether / 6) + 3 * w * w);
+}
+
 /** Зоны комфорта по скорости вращения (Hall; Globus & Hall 2017). */
 export function comfortZone(rpm) {
   if (rpm <= 2) return { level: 0, text: 'комфортно почти для всех' };
@@ -82,7 +91,10 @@ export function designTether(p) {
   const EA = mat.E * A;
   const T0 = Ta + (rhoA * w * w * Ra * Ra) / 2;
   const mTether = 2 * rhoA * Ra;
-  const stretchHalf = (Ta * Ra + (rhoA * w * w * Ra ** 3) / 3) / EA;
+  // l0 = ∫dx/(1 + T/EA) с T = T0 − b·x²: точный интеграл через atanh
+  const K = EA + T0;
+  const z = Ra * Math.sqrt((rhoA * w * w) / 2 / K);
+  const stretchHalf = Ra - ((EA * Ra) / K) * (z > 1e-8 ? Math.atanh(z) / z : 1);
   const I = M * gyration * gyration;
   const Tmean = Ta + (rhoA * w * w * Ra * Ra) / 3;
   const pitch = pitchModes({ M, I, a: cmFromNose, Ra, w });
@@ -99,12 +111,12 @@ export function designTether(p) {
     EA,
     mTether,
     tetherFraction: mTether / (2 * M),
+    // формулы мод выведены для троса много легче кораблей
+    heavyTether: mTether / (2 * M) > 0.05,
     stretchHalf,
     strainMax: T0 / EA,
     I,
-    // продольные колебания («подпрыгивание»): половина троса как пружина EA/Ra,
-    // поправка Рэлея на массу троса (+m/3) и центробежная добавка 3ω²
-    wBounce: Math.sqrt(EA / Ra / (M + mTether / 6) + 3 * w * w),
+    wBounce: bounceOmega({ EA, l0: Ra - stretchHalf, M, mTether, w }),
     // первая поперечная мода струны длиной 2Ra при среднем натяжении
     wString: (Math.PI / (2 * Ra)) * Math.sqrt(Tmean / rhoA),
     waveSpeed: Math.sqrt(Tmean / rhoA),
