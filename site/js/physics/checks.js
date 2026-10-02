@@ -93,7 +93,7 @@ export const CHECKS = [
         maxDev = Math.max(maxDev, Math.abs(sim.T[N - 1] - T0) / T0);
       }
       const r = result(sim.T[N - 1], expected, 1e-3, { unit: 'Н' });
-      r.pass = r.pass && maxDev < 1e-3 && errAxis < 2e-5 && errStretch < 1e-4 && errSizing < 1e-9;
+      r.pass = r.pass && maxDev < 1e-6 && errAxis < 2e-5 && errStretch < 1e-4 && errSizing < 1e-9;
       r.note = `дрейф за 20 с: ${maxDev.toExponential(1)}; T0 на оси: ${errAxis.toExponential(1)}; удлинение: ${errStretch.toExponential(1)}; T0/A = σ_доп: ${errSizing.toExponential(1)}`;
       return r;
     },

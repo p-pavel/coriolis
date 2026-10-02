@@ -114,19 +114,32 @@ export class TetherSim {
     return Math.min((0.35 * Math.sqrt(this.s) * lmin) / this.cWave, 2e-3);
   }
 
-  syncNoses() {
+  // Скорость носа — в тот же момент, что и скорость корпуса (на lag раньше положения).
+  syncNoses(lag = 0) {
     const N = this.N;
     const a = this.as;
     for (let i = 0; i < 2; i++) {
       const sh = this.ships[i];
       const k = i === 0 ? 0 : N;
-      const cs = Math.cos(sh.th);
-      const sn = Math.sin(sh.th);
-      this.x[k] = sh.x + a * cs;
-      this.y[k] = sh.y + a * sn;
-      this.vx[k] = sh.vx - sh.w * a * sn;
-      this.vy[k] = sh.vy + sh.w * a * cs;
+      this.x[k] = sh.x + a * Math.cos(sh.th);
+      this.y[k] = sh.y + a * Math.sin(sh.th);
+      const thv = sh.th - sh.w * lag;
+      this.vx[k] = sh.vx - sh.w * a * Math.sin(thv);
+      this.vy[k] = sh.vy + sh.w * a * Math.cos(thv);
     }
+  }
+
+  // Положение узла k на lag секунд раньше; нос корабля движется по дуге вместе с корпусом.
+  lagX(k, lag) {
+    if (k > 0 && k < this.N) return this.x[k] - this.vx[k] * lag;
+    const sh = this.ships[k === 0 ? 0 : 1];
+    return sh.x - sh.vx * lag + this.as * Math.cos(sh.th - sh.w * lag);
+  }
+
+  lagY(k, lag) {
+    if (k > 0 && k < this.N) return this.y[k] - this.vy[k] * lag;
+    const sh = this.ships[k === 0 ? 0 : 1];
+    return sh.y - sh.vy * lag + this.as * Math.sin(sh.th - sh.w * lag);
   }
 
   winchRate() {
@@ -142,8 +155,13 @@ export class TetherSim {
     return sdot;
   }
 
-  /** Силы при текущих положениях и скоростях: узлы — в fx/fy, корабли — в Fx/Fy/tau. */
-  computeForces() {
+  /**
+   * Силы при текущих положениях и скоростях: узлы — в fx/fy, корабли — в Fx/Fy/tau.
+   * lag — на сколько скорости отстают от положений (после «дрейфа» Верле это dt/2):
+   * скорость удлинения для трения берётся по положению в тот же момент, что и скорость,
+   * иначе жёсткое вращение даёт ложное «растяжение» и постоянную паразитную силу.
+   */
+  computeForces(lag = 0) {
     const c = this.cfg;
     const N = this.N;
     const { x, y, vx, vy, fx, fy, l0, T, broken } = this;
@@ -154,7 +172,7 @@ export class TetherSim {
     this.u = sdot * this.L0sum;
     const s = this.s;
 
-    this.syncNoses();
+    this.syncNoses(lag);
     fx.fill(0);
     fy.fill(0);
     for (let j = 0; j < N; j++) {
@@ -171,7 +189,11 @@ export class TetherSim {
         const ux = dx / d;
         const uy = dy / d;
         const k = EA / l;
-        const ddot = (vx[j + 1] - vx[j]) * ux + (vy[j + 1] - vy[j]) * uy;
+        const dvx = vx[j + 1] - vx[j];
+        const dvy = vy[j + 1] - vy[j];
+        const qx = this.lagX(j + 1, lag) - this.lagX(j, lag);
+        const qy = this.lagY(j + 1, lag) - this.lagY(j, lag);
+        const ddot = (qx * dvx + qy * dvy) / Math.hypot(qx, qy);
         Tj = k * (d - l) + beta * k * (ddot - sdot * l0[j]);
         if (Tj < 0) Tj = 0;
         if (Tj > c.Tbreak) {
@@ -237,7 +259,7 @@ export class TetherSim {
       sh.th += sh.w * dt;
     }
     this.s += this.sdot * dt;
-    this.computeForces();
+    this.computeForces(dt / 2);
     this.kick(dt / 2);
     this.t += dt;
   }

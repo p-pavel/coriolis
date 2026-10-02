@@ -185,11 +185,11 @@ const stars = makeStars();
 const plot = new TimePlot(
   document.getElementById('plot'),
   [
-    { name: 'Тяжесть на палубе', color: '#ffb86b', fmt: (x) => `${fixed(x, 4)} g` },
-    { name: 'Натяжение у корабля', color: '#7fd1ff', fmt: (x) => `${fixed(x, 3)} МН` },
-    { name: 'Вращение', color: '#7ee08a', fmt: (x) => `${fixed(x, 3)} об/мин` },
-    { name: 'Качание корабля', color: '#c792ea', fmt: (x) => `${fixed(x, 2)}°` },
-    { name: 'Длина троса (без нагрузки)', color: '#9aa5b8', fmt: (x) => `${fixed(x, 2)} м` },
+    { name: 'Тяжесть на палубе', color: '#ffb86b', fmt: (x) => `${fixed(x, 4)} g`, minSpan: 0.002 },
+    { name: 'Натяжение у корабля', color: '#7fd1ff', fmt: (x) => `${fixed(x, 3)} МН`, minSpan: 0.02 },
+    { name: 'Вращение', color: '#7ee08a', fmt: (x) => `${fixed(x, 3)} об/мин`, minSpan: 0.02 },
+    { name: 'Качание корабля', color: '#c792ea', fmt: (x) => `${fixed(x, 2)}°`, minSpan: 0.2 },
+    { name: 'Длина троса (без нагрузки)', color: '#9aa5b8', fmt: (x) => `${fixed(x, 2)} м`, minSpan: 0.2 },
   ],
   40,
 );

@@ -3,7 +3,7 @@
 import { fitCanvas, num } from './common.js';
 
 export class TimePlot {
-  /** series: [{ name, color, fmt, min?, max? }] */
+  /** series: [{ name, color, fmt, min?, max?, minSpan? }] */
   constructor(canvas, series, windowSec = 60) {
     this.canvas = canvas;
     this.series = series;
@@ -45,10 +45,12 @@ export class TimePlot {
         if (s.max == null) hi = Math.max(hi, x);
       }
       if (!Number.isFinite(lo) || !Number.isFinite(hi)) return;
-      if (hi - lo < 1e-12 * (Math.abs(hi) + 1)) {
-        const pad = Math.abs(hi) * 1e-3 + 1e-9;
-        lo -= pad;
-        hi += pad;
+      // без нижнего предела шкала растянула бы шум округления на всю дорожку
+      const span = Math.max(s.minSpan ?? 0, 1e-12 * (Math.abs(hi) + 1));
+      if (hi - lo < span) {
+        const mid = 0.5 * (hi + lo);
+        lo = mid - span / 2;
+        hi = mid + span / 2;
       }
       const pad = 0.12 * (hi - lo);
       const Y = (x) => y0 + lane - 6 - ((x - (lo - pad)) / (hi - lo + 2 * pad)) * (lane - 22);
