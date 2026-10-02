@@ -3,7 +3,7 @@
 
 import { STARSHIP, LEO_MEAN_MOTION } from './constants.js';
 import { TETHER_MATERIALS } from './materials.js';
-import { designTether, pitchModes, spinAxisPrecession } from './sizing.js';
+import { designTether, pitchModes, spinAxisPrecession, bounceOmega } from './sizing.js';
 import { TetherSim, simConfigFromDesign } from './sim.js';
 import { dropTrajectory, ringDropExact, smallDropDeflection, flatDropExact } from './drop.js';
 import { climbForces, inertialAccelFD } from './climb.js';
@@ -83,14 +83,18 @@ export const CHECKS = [
       const xm = d.Ra - h / 2;
       const expected = d.Ta + (d.rhoA * d.w * d.w * (d.Ra * d.Ra - xm * xm)) / 2;
       const T0 = sim.T[N - 1];
+      // натяжение у оси (отрезок с центром x = h/2) и удлинение — против формул проекта
+      const errAxis = relErr(sim.T[N / 2], d.T0 - (d.rhoA * d.w * d.w * (h / 2) ** 2) / 2);
+      const errStretch = relErr(sim.noseRadius() - sim.restLength() / 2, d.stretchHalf);
+      const errSizing = relErr(d.T0 / d.A, d.sAllow);
       let maxDev = 0;
       for (let i = 0; i < 200; i++) {
         sim.advance(0.1);
         maxDev = Math.max(maxDev, Math.abs(sim.T[N - 1] - T0) / T0);
       }
       const r = result(sim.T[N - 1], expected, 1e-3, { unit: 'Н' });
-      r.pass = r.pass && maxDev < 1e-3;
-      r.note = `дрейф натяжения за 20 с: ${maxDev.toExponential(1)}`;
+      r.pass = r.pass && maxDev < 1e-3 && errAxis < 2e-5 && errStretch < 1e-4 && errSizing < 1e-9;
+      r.note = `дрейф за 20 с: ${maxDev.toExponential(1)}; T0 на оси: ${errAxis.toExponential(1)}; удлинение: ${errStretch.toExponential(1)}; T0/A = σ_доп: ${errSizing.toExponential(1)}`;
       return r;
     },
   },
@@ -138,6 +142,31 @@ export const CHECKS = [
     },
   },
   {
+    id: 'thrust',
+    title: 'Двигатели: момент импульса растёт как 2·F·r',
+    explain:
+      'Двигатели каждого корабля дают касательную силу F в центре масс. Внешний момент 2·F·r (r — расстояние ЦМ корабля от оси), поэтому прирост момента импульса за время разгона — интеграл 2·F·r по времени. Проверяет знак и точку приложения тяги.',
+    run() {
+      const { sim } = baseSim();
+      const F = 50e3;
+      sim.ctrl.thrust = F;
+      const L0 = sim.angularMomentum();
+      const arm = (s) => s.ships.reduce((p, sh) => p + Math.hypot(sh.x, sh.y), 0);
+      const dt = 0.01;
+      let integral = 0;
+      let prev = arm(sim);
+      for (let k = 0; k < 500; k++) {
+        sim.advance(dt);
+        const cur = arm(sim);
+        integral += 0.5 * (prev + cur) * F * dt;
+        prev = cur;
+      }
+      const r = result(sim.angularMomentum() - L0, integral, 1e-4, { unit: 'кг·м²/с' });
+      r.note = `за 5 с: ω ${(sim.spinRate() / baseSim().d.w - 1).toExponential(2)} относительно начальной`;
+      return r;
+    },
+  },
+  {
     id: 'energy',
     title: 'Сохранение энергии без трения',
     explain:
@@ -169,33 +198,54 @@ export const CHECKS = [
     id: 'bounce',
     title: 'Частота продольных колебаний («подпрыгивание» кораблей на тросе)',
     explain:
-      'Формула: ω² = EA/(Ra·(M + m_троса/6)) + 3ω_вр². Толкаем корабли вдоль троса и измеряем частоту колебаний расстояния между ними.',
+      'Формула: ω² = EA/(l₀·(M + m_троса/6)) + 3ω_вр². Чтобы проверка видела все члены, трос нарочно мягкий (растяжение ~5 %) и тяжёлый (30 % массы корабля): тогда член 3ω² — около 5 % от ω², поправка на массу троса — тоже, и допуск 0,3 % их различает. Толкаем корабли вдоль троса и измеряем частоту колебаний расстояния между ними.',
     run() {
-      const { d, sim } = baseSim();
-      sim.kickRadial(0.1);
-      const { ts, ys } = record(sim, 15, 0.02, (s) => s.shipDistance());
-      return result(measureOmega(ts, ys), d.wBounce, 0.02, { unit: 'рад/с' });
+      const d = designTether(DEFAULT_DESIGN_INPUT);
+      const EA = d.EA / 10;
+      const rhoA = (0.15 * STARSHIP.M) / d.Ra;
+      const sim = new TetherSim({ ...simConfigFromDesign(d, DEFAULT_DESIGN_INPUT), EA, rhoA, Tbreak: Infinity });
+      const l0 = sim.restLength() / 2;
+      const expected = bounceOmega({ EA, l0, M: STARSHIP.M, mTether: rhoA * 2 * l0, w: d.w });
+      sim.kickRadial(0.05);
+      const { ts, ys } = record(sim, 30, 0.01, (s) => s.shipDistance());
+      const r = result(measureOmega(ts, ys), expected, 3e-3, { unit: 'рад/с' });
+      const def = baseSim();
+      def.sim.kickRadial(0.1);
+      const rec = record(def.sim, 15, 0.01, (s) => s.shipDistance());
+      const errDef = relErr(measureOmega(rec.ts, rec.ys), def.d.wBounce);
+      r.pass = r.pass && errDef < 1e-3;
+      r.note = `растяжение ${((sim.noseRadius() / l0 - 1) * 100).toFixed(1)} %; параметры по умолчанию: ошибка ${errDef.toExponential(1)}`;
+      return r;
     },
   },
   {
     id: 'snap',
     title: 'Провис и рывок: пик натяжения = Ta·(1 + размах/растяжение)',
     explain:
-      'Толкаем корабли друг от друга так, что размах колебаний в 1,5 раза больше статического растяжения троса: на обратном ходе трос провисает. Энергия на внешнем ходе та же, поэтому пик натяжения должен быть 2,5·Ta. Проверяет односторонний (только растяжение) трос и выход из провиса.',
+      'Толкаем корабли друг от друга так, что размах колебаний в 1,5 раза больше статического растяжения троса: на обратном ходе трос провисает целиком, корабли летят свободно, а затем трос дёргается. Энергия на внешнем ходе та же, поэтому пик натяжения должен быть 2,5·Ta. Меряем пики на втором и третьем ходах — после настоящего провиса.',
     run() {
       const { d, sim } = baseSim({ Tbreak: Infinity });
       const f = 1.5;
       sim.kickRadial(f * 2 * d.stretchHalf * d.wBounce);
-      let maxT = 0;
-      let slack = 0;
-      for (let i = 0; i < 300; i++) {
-        sim.advance(0.01);
-        maxT = Math.max(maxT, sim.T[sim.N - 1]);
-        slack = Math.max(slack, sim.slackCount());
+      // ход — участок, где натяжение у корабля выше 0,3·Ta; между ходами трос провисает
+      const peaks = [];
+      let inStroke = false;
+      let fullSlack = 0;
+      for (let i = 0; i < 2000 && peaks.length < 4; i++) {
+        sim.advance(0.002);
+        const T = sim.T[sim.N - 1];
+        if (sim.slackCount() === sim.N) fullSlack++;
+        if (T > 0.3 * d.Ta) {
+          if (!inStroke) peaks.push(0);
+          inStroke = true;
+          peaks[peaks.length - 1] = Math.max(peaks[peaks.length - 1], T);
+        } else inStroke = false;
       }
-      const r = result(maxT, d.Ta * (1 + f), 0.02, { unit: 'Н' });
-      r.pass = r.pass && slack === sim.N;
-      r.note = `трос провисал целиком: ${slack === sim.N ? 'да' : 'нет'}`;
+      const exp = d.Ta * (1 + f);
+      const later = peaks.slice(1, 3);
+      const r = result(later.length ? Math.min(...later) : 0, exp, 0.03, { unit: 'Н' });
+      r.pass = r.pass && later.length === 2 && relErr(Math.max(...later), exp) < 0.03 && fullSlack > 0;
+      r.note = `пики по ходам, ×Ta: ${peaks.map((p) => (p / d.Ta).toFixed(3)).join(', ')} (ожидание ${(1 + f).toFixed(2)}); полный провис ${(fullSlack * 2).toFixed(0)} мс`;
       return r;
     },
   },
@@ -224,8 +274,11 @@ export const CHECKS = [
       };
       const period = (2 * Math.PI) / expected;
       const { ts, ys } = record(sim, 12 * period, period / 60, probe);
-      const r = result(measureOmega(ts, ys), expected, 0.02, { unit: 'рад/с' });
-      r.note = `непрерывная струна: ${d.wString.toFixed(2)} рад/с`;
+      const measured = measureOmega(ts, ys);
+      const r = result(measured, expected, 0.02, { unit: 'рад/с' });
+      const errCont = relErr(measured, d.wString);
+      r.pass = r.pass && errCont < 0.01;
+      r.note = `формула сайта (непрерывная струна): ${d.wString.toFixed(2)} рад/с, расхождение ${(errCont * 100).toFixed(2)} %`;
       return r;
     },
   },
@@ -253,6 +306,44 @@ export const CHECKS = [
       const period = (2 * Math.PI) / expected;
       const { ts, ys } = record(sim, 8 * period, period / 80, (s) => s.pitchAngle(1));
       return result(measureOmega(ts, ys), expected, 0.02, { unit: 'рад/с' });
+    },
+  },
+  {
+    id: 'deck',
+    title: 'Ощущаемая тяжесть на палубе при качании: формула против численного дифференцирования',
+    explain:
+      'Модуль и наклон «вертикали» на палубе считаются из сил и углового ускорения корабля (переносное, центростремительное и эйлерово ускорения). Здесь ускорение точки палубы берётся второй разностью её положения по шагам симуляции. При качании на ~0,4° наклон вертикали должен быть в несколько раз больше.',
+    run() {
+      const { sim } = baseSim();
+      const i = 1;
+      sim.kickPitch(0.01, false);
+      sim.kickRadial(0.2);
+      sim.advance(3.3);
+      const deck = (s) => {
+        const sh = s.ships[i];
+        const rho = s.as - s.cfg.deckFromNose;
+        return [sh.x + rho * Math.cos(sh.th), sh.y + rho * Math.sin(sh.th)];
+      };
+      const dt = sim.stableDt();
+      const P0 = deck(sim);
+      sim.step(dt);
+      const P1 = deck(sim);
+      const g = sim.deckGravity(i);
+      const pitch = sim.pitchAngle(i);
+      const th = sim.ships[i].th;
+      sim.step(dt);
+      const P2 = deck(sim);
+      const gx = -(P2[0] - 2 * P1[0] + P0[0]) / (dt * dt);
+      const gy = -(P2[1] - 2 * P1[1] + P0[1]) / (dt * dt);
+      // наклон — угол от оси корабля «к хвосту» (−e) до ощущаемой вертикали, против часовой
+      const ex = Math.cos(th);
+      const ey = Math.sin(th);
+      const tilt = Math.atan2(-ex * gy + ey * gx, -ex * gx - ey * gy);
+      const r = result(g.g, Math.hypot(gx, gy), 1e-5, { unit: 'м/с²' });
+      const dTilt = Math.abs(g.tilt - tilt);
+      r.pass = r.pass && dTilt < 1e-5 && Math.abs(tilt) > 0.01;
+      r.note = `качание ${((pitch * 180) / Math.PI).toFixed(2)}°, наклон вертикали ${((tilt * 180) / Math.PI).toFixed(2)}° (формула ${((g.tilt * 180) / Math.PI).toFixed(2)}°)`;
+      return r;
     },
   },
   {
@@ -339,6 +430,46 @@ export const CHECKS = [
       const ex = flatDropExact(R, h, w);
       const r = result(tr.end.yr, ex.y, 1e-6, { unit: 'м' });
       r.pass = r.pass && relErr(tr.tHit, ex.t) < 1e-6;
+      return r;
+    },
+  },
+  {
+    id: 'dropRot',
+    title: 'Яблоко: независимый расчёт во вращающейся системе (Кориолис + центробежная сила)',
+    explain:
+      'Модель яблока считает прямую в инерциальной системе. Здесь то же падение интегрируется методом Рунге–Кутты прямо во вращающейся системе, с ускорением ω²r − 2ω×v. Сравниваем точку падения на плоской палубе и на кольце.',
+    run() {
+      const R = 56;
+      const h = 1.5;
+      const w = Math.sqrt(9.80665 / R);
+      const fall = (hit) => {
+        let s = [R - h, 0, 0, 0];
+        const f = ([x, y, vx, vy]) => [vx, vy, w * w * x + 2 * w * vy, w * w * y - 2 * w * vx];
+        const dt = 1e-4;
+        for (let i = 0; i < 1e6; i++) {
+          const k1 = f(s);
+          const k2 = f(s.map((c, j) => c + (dt / 2) * k1[j]));
+          const k3 = f(s.map((c, j) => c + (dt / 2) * k2[j]));
+          const k4 = f(s.map((c, j) => c + dt * k3[j]));
+          const n = s.map((c, j) => c + (dt / 6) * (k1[j] + 2 * k2[j] + 2 * k3[j] + k4[j]));
+          if (hit(n) >= 0) {
+            const u = -hit(s) / (hit(n) - hit(s));
+            return s.map((c, j) => c + u * (n[j] - c));
+          }
+          s = n;
+        }
+        return s;
+      };
+      const flat = fall(([x]) => x - R);
+      const ring = fall(([x, y]) => Math.hypot(x, y) - R);
+      const trF = dropTrajectory({ w, geometry: 'flat', floorR: R, ceilR: R - 3, halfWidth: 4.5, x0: R - h });
+      const trR = dropTrajectory({ w, geometry: 'ring', floorR: R, ceilR: 1, x0: R - h });
+      const arcRK = R * Math.atan2(ring[1], ring[0]);
+      const arcModel = R * Math.atan2(trR.end.yr, trR.end.xr);
+      const r = result(trF.end.yr, flat[1], 1e-5, { unit: 'м' });
+      const errRing = relErr(arcModel, arcRK);
+      r.pass = r.pass && errRing < 1e-5;
+      r.note = `плоская палуба ${(flat[1] * 100).toFixed(2)} см, кольцо ${(arcRK * 100).toFixed(2)} см по дуге (расхождение ${errRing.toExponential(1)})`;
       return r;
     },
   },
@@ -449,7 +580,8 @@ export const CHECKS = [
         return { dq, domega };
       };
       const dt = 0.02;
-      const tEnd = 1500;
+      // целое число орбит: колебание с удвоенной орбитальной частотой не смещает наклон
+      const tEnd = (5 * 2 * Math.PI) / n;
       const ts = [];
       const az = [];
       let t = 0;
