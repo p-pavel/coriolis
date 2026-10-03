@@ -167,6 +167,32 @@ export const CHECKS = [
     },
   },
   {
+    id: 'cut',
+    title: 'Обрыв: корабли летят по прямой со скоростью ω·R_цм, кувыркаются с ω, «пол» становится «потолком»',
+    explain:
+      'После обрыва на корабль действует только обрывок троса (0,05 % массы). Ожидание: центр масс корабля движется по касательной с той же скоростью ω·R_цм; корабль продолжает вращаться вокруг своего центра масс с прежней ω; на палубе, которая стоит между носом и центром масс на расстоянии ρ = a − d от него, тяжесть ω²·ρ направлена к носу (наклон 180°).',
+    run() {
+      const { d, sim } = baseSim();
+      sim.cut();
+      const B = sim.ships[1];
+      const p0 = [B.x, B.y];
+      const v0 = [B.vx, B.vy];
+      const speed0 = Math.hypot(...v0);
+      sim.advance(20);
+      const off = Math.abs((B.x - p0[0]) * v0[1] - (B.y - p0[1]) * v0[0]) / speed0;
+      const run = Math.hypot(B.x - p0[0], B.y - p0[1]);
+      const g = sim.deckGravity(1);
+      const rho = sim.as - DEFAULT_DESIGN_INPUT.deckFromNose;
+      const r = result(Math.hypot(B.vx, B.vy), d.w * d.Rcm, 3e-3, { unit: 'м/с' });
+      const errSpin = relErr(B.w, d.w);
+      const errG = relErr(g.g, d.w * d.w * rho);
+      const flip = Math.abs(Math.abs(g.tilt) - Math.PI);
+      r.pass = r.pass && off / run < 1e-3 && errSpin < 0.03 && errG < 0.05 && flip < 0.05;
+      r.note = `за 20 с: ${run.toFixed(0)} м пути, уход с прямой ${(off * 100).toFixed(1)} см; кувыркание ${((B.w * 60) / 2 / Math.PI).toFixed(2)} об/мин; палуба ${(g.g / 9.80665).toFixed(3)} g (ожид. ${((d.w * d.w * rho) / 9.80665).toFixed(3)}), наклон ${((g.tilt * 180) / Math.PI).toFixed(0)}°`;
+      return r;
+    },
+  },
+  {
     id: 'energy',
     title: 'Сохранение энергии без трения',
     explain:

@@ -194,9 +194,50 @@ const plot = new TimePlot(
   40,
 );
 
+// Система отсчёта картинки. Пока трос цел, «вращающаяся СО» повёрнута по линии между кораблями.
+// После обрыва эта линия почти перестаёт вращаться (момент импульса уносят корабли), поэтому
+// дальше СО вращается равномерно со скоростью на момент обрыва — как было бы у наблюдателя на оси.
+const frameRef = { phi: 0, w: 0, t: 0, rOrbit: 0, phiNow: 0, intact: true };
+// следы центров масс кораблей: в инерциальных координатах и во вращающейся СО
+let trail = [];
+let trailT = -Infinity;
+const TRAIL_DT = 0.05;
+const TRAIL_MAX = 1600;
+
+function updateFrame() {
+  const [A, B] = sim.ships;
+  const intact = !sim.broken.some((b) => b);
+  const line = Math.atan2(B.y - A.y, B.x - A.x);
+  if (intact) {
+    frameRef.phi = line;
+    frameRef.w = sim.spinRate();
+    frameRef.t = sim.t;
+    frameRef.rOrbit = sim.noseRadius() + sim.as;
+    frameRef.phiNow = line;
+  } else frameRef.phiNow = frameRef.phi + frameRef.w * (sim.t - frameRef.t);
+  frameRef.intact = intact;
+  if (sim.t - trailT >= TRAIL_DT) {
+    trailT = sim.t;
+    const c = Math.cos(frameRef.phiNow);
+    const s = Math.sin(frameRef.phiNow);
+    const cmx = 0.5 * (A.x + B.x);
+    const cmy = 0.5 * (A.y + B.y);
+    trail.push(
+      [A, B].map((sh) => {
+        const dx = sh.x - cmx;
+        const dy = sh.y - cmy;
+        return { x: dx, y: dy, al: dx * c + dy * s, la: -dx * s + dy * c };
+      }),
+    );
+    if (trail.length > TRAIL_MAX) trail.shift();
+  }
+}
+
 function resetSim(mode = 'steady') {
   autoSpin = false;
   plot.clear();
+  trail = [];
+  trailT = -Infinity;
   if (!design || !design.ok) {
     sim = null;
     return;
@@ -206,6 +247,7 @@ function resetSim(mode = 'steady') {
   sim = new TetherSim(cfg);
   sim.ctrl.Tref = design.Ta;
   applyCtl();
+  updateFrame();
 }
 
 function applyCtl() {
@@ -329,10 +371,12 @@ function draw() {
   const cmx = 0.5 * (A.x + B.x);
   const cmy = 0.5 * (A.y + B.y);
   const rot = S.view === 'rotating';
-  const f = rot ? S.exag : 1;
-  const phi = Math.atan2(B.y - A.y, B.x - A.x);
+  const intact = frameRef.intact;
+  // после обрыва отклонения уже не малы — увеличение выключаем
+  const f = rot && intact ? S.exag : 1;
+  const phi = frameRef.phiNow;
   const span = 0.5 * sim.shipDistance() + P.length * 0.45 + 8;
-  const k = rot ? Math.min((w * 0.47) / span, (h * 0.9) / (P.length * 0.6 + 20)) : (Math.min(w, h) * 0.47) / span;
+  const k = rot && intact ? Math.min((w * 0.47) / span, (h * 0.9) / (P.length * 0.6 + 20)) : (Math.min(w, h) * 0.47) / span;
   const cphi = Math.cos(phi);
   const sphi = Math.sin(phi);
   const T = (x, y) => {
@@ -352,9 +396,23 @@ function draw() {
     ctx.strokeStyle = 'rgba(127,209,255,0.12)';
     ctx.setLineDash([4, 6]);
     ctx.beginPath();
-    ctx.arc(w / 2, h / 2, k * (sim.noseRadius() + sim.as), 0, 2 * Math.PI);
+    ctx.arc(w / 2, h / 2, k * frameRef.rOrbit, 0, 2 * Math.PI);
     ctx.stroke();
     ctx.setLineDash([]);
+  }
+
+  // следы центров масс кораблей
+  ctx.lineWidth = 1.5;
+  for (let i = 0; i < 2; i++) {
+    ctx.strokeStyle = 'rgba(255,184,107,0.45)';
+    ctx.beginPath();
+    trail.forEach((p, j) => {
+      const q = p[i];
+      const [sx, sy] = rot ? [w / 2 + k * q.al, h / 2 - k * q.la * f] : [w / 2 + k * q.x, h / 2 - k * q.y];
+      if (j === 0) ctx.moveTo(sx, sy);
+      else ctx.lineTo(sx, sy);
+    });
+    ctx.stroke();
   }
   ctx.strokeStyle = 'rgba(255,255,255,0.35)';
   ctx.beginPath();
@@ -392,6 +450,13 @@ function draw() {
     const [nx, ny] = id(sim.x[nk], sim.y[nk]);
     const flame = thrustDir !== 0 || autoSpin ? -(thrustDir || 1) : 0;
     drawShip(ctx, (x, y) => [x, y], k, nx, ny, ang, P.length, P.diameter, { deckFromNose: P.deckFromNose, thrusterSide: flame });
+    if (k * P.length < 12) {
+      const [cx, cy] = id(sh.x, sh.y);
+      ctx.fillStyle = '#e8edf5';
+      ctx.beginPath();
+      ctx.arc(cx, cy, 3, 0, 2 * Math.PI);
+      ctx.fill();
+    }
     // ощущаемая вертикаль на палубе
     const g = sim.deckGravity(i);
     const ex = Math.cos(ang);
@@ -410,7 +475,9 @@ function draw() {
   const slack = sim.slackCount();
   const lines = [
     `t = ${fixed(sim.t, 1)} с`,
-    `вращение: ${fixed((sim.spinRate() * 60) / (2 * Math.PI), 3)} об/мин`,
+    intact
+      ? `вращение: ${fixed((sim.spinRate() * 60) / (2 * Math.PI), 3)} об/мин`
+      : `корабли кувыркаются: ${fixed((sim.ships[1].w * 60) / (2 * Math.PI), 2)} об/мин, летят ${fixed(Math.hypot(sim.ships[1].vx, sim.ships[1].vy), 1)} м/с по прямой`,
     `тяжесть на палубе: ${fixed(gd.g / G0, 3)} g, наклон ${fixed((gd.tilt * 180) / Math.PI, 2)}°`,
     `натяжение у корабля: ${force(sim.T[N - 1])}`,
     `трос: ${fixed(sim.restLength(), 2)} м, лебёдка ${fixed(sim.u, 2)} м/с, ${num(winchP / 1e6, 2)} МВт`,
@@ -421,6 +488,8 @@ function draw() {
   else if (sim.broken.some((b) => b)) lines.push('ТРОС ОБОРВАН');
   else if (slack) lines.push(`провисло отрезков: ${slack} из ${N}`);
   else lines.push(`запас до разрыва: ×${fixed(sim.cfg.Tbreak / maxT, 2)}`);
+  if (!intact && Math.abs(gd.tilt) > Math.PI / 2) lines.push('на палубе «пол» и «потолок» поменялись местами');
+  if (!intact && rot) lines.push(`СО вращается равномерно, ${fixed((frameRef.w * 60) / (2 * Math.PI), 2)} об/мин (как до обрыва)`);
   if (autoSpin) lines.push('раскрутка двигателями…');
   if (rot && f > 1) lines.push(`поперечные смещения и углы увеличены ×${num(f, 3)}`);
   ctx.font = '13px ui-monospace, monospace';
@@ -443,6 +512,7 @@ function frame(now) {
       }
     } else sim.ctrl.thrust = thrustDir * S.thrustKN * 1e3;
     sim.advance(S.warp * dtReal);
+    updateFrame();
     const N = sim.N;
     plot.push(sim.t, [sim.deckGravity(1).g / G0, sim.T[N - 1] / 1e6, (sim.spinRate() * 60) / (2 * Math.PI), (sim.pitchAngle(1) * 180) / Math.PI, sim.restLength()]);
   }
