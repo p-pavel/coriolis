@@ -180,6 +180,30 @@ p.lead {
   accent-color: var(--accent);
 }
 
+.ctl-row {
+  display: flex;
+  gap: 0.45rem;
+  align-items: center;
+}
+
+.ctl-row input[type='range'] {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.ctl-row input.ctl-num {
+  flex: 0 0 5.2rem;
+  width: 5.2rem;
+  background: var(--panel2);
+  color: var(--warm);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 0.2rem 0.35rem;
+  font: inherit;
+  font-family: var(--mono);
+  font-size: 0.85rem;
+}
+
 .ctl select {
   width: 100%;
   background: var(--panel2);

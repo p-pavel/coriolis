@@ -13,7 +13,12 @@ import {
   oneOrbitReturns,
 } from './orbit.js';
 import { buildMission, stateAt, argLatAtLatitude } from './ascent.js';
-import { closureReport, circularForRepeatOrbits, orbitsToCloseLongitude } from './groundtrack.js';
+import {
+  closureReport,
+  circularForRepeatOrbits,
+  orbitsToCloseLongitude,
+  closestApproachOnOrbit,
+} from './groundtrack.js';
 
 function relErr(got, exp) {
   const e = Math.abs(exp);
@@ -241,6 +246,34 @@ export const CHECKS = [
         err: ok ? 0 : 1,
         tol: 0,
         note: `h=${(geo.h / 1e3).toFixed(0)} км, |Δλ|=${((Math.abs(d) * 180) / Math.PI).toFixed(4)}°`,
+      };
+    },
+  },
+  {
+    id: 'closest-15',
+    title: 'Кратчайшее за 1,5 витка после вставки ≪ промаха «ровно 1 виток в фазе старта» на НОО',
+    run() {
+      const m = buildMission({
+        lat0: SITES.baikonur.lat,
+        lon0: SITES.baikonur.lon,
+        h: 400e3,
+        i: rad(51.6),
+        Tasc: 600,
+      });
+      const rep = closureReport(m);
+      const c = closestApproachOnOrbit(m, 1.5);
+      // На НОО ближайший проход всё ещё далеко; но min ≤ фазовый промах и > 100 км.
+      const ok =
+        c.missKm > 100 &&
+        c.missKm <= rep.afterOneOrbit.missKm + 1 &&
+        Math.abs(c.missKm - rep.closestOnFirstOrbit.missKm) < 1;
+      return {
+        pass: ok,
+        got: c.missKm,
+        expected: '100…промах_фазы',
+        err: 0,
+        tol: 0,
+        note: `ближ=${c.missKm.toFixed(0)} км @ ${c.orbitsFromInsert.toFixed(2)} вит.; фаза=${rep.afterOneOrbit.missKm.toFixed(0)} км`,
       };
     },
   },

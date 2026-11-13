@@ -86,6 +86,28 @@ export function drawFlatMap(canvas, track, site, opts = {}) {
     ctx.fill();
   }
 
+  if (opts.closest) {
+    const [px, py] = lonLatToMap(opts.closest.lon, opts.closest.lat, w, h);
+    ctx.fillStyle = '#c9a0ff';
+    ctx.beginPath();
+    ctx.arc(px, py, 5, 0, 2 * Math.PI);
+    ctx.fill();
+    ctx.font = '12px system-ui';
+    ctx.fillStyle = '#c9a0ff';
+    ctx.fillText(opts.closest.label ?? 'ближ.', px + 8, py + 12);
+    if (site) {
+      const [sx, sy] = lonLatToMap(site.lon, site.lat, w, h);
+      ctx.strokeStyle = 'rgba(201,160,255,0.6)';
+      ctx.lineWidth = 1.5;
+      ctx.setLineDash([4, 3]);
+      ctx.beginPath();
+      ctx.moveTo(sx, sy);
+      ctx.lineTo(px, py);
+      ctx.stroke();
+      ctx.setLineDash([]);
+    }
+  }
+
   if (opts.afterOne) {
     const [ax, ay] = lonLatToMap(opts.afterOne.lon, opts.afterOne.lat, w, h);
     ctx.fillStyle = '#ff7272';
@@ -94,19 +116,7 @@ export function drawFlatMap(canvas, track, site, opts = {}) {
     ctx.fill();
     ctx.font = '12px system-ui';
     ctx.fillStyle = '#ff7272';
-    const lab = opts.afterOne.label ?? 'через 1 виток';
-    ctx.fillText(lab, ax + 8, ay - 6);
-    if (site) {
-      const [sx, sy] = lonLatToMap(site.lon, site.lat, w, h);
-      ctx.strokeStyle = 'rgba(255,114,114,0.55)';
-      ctx.lineWidth = 1.5;
-      ctx.setLineDash([5, 4]);
-      ctx.beginPath();
-      ctx.moveTo(sx, sy);
-      ctx.lineTo(ax, ay);
-      ctx.stroke();
-      ctx.setLineDash([]);
-    }
+    ctx.fillText(opts.afterOne.label ?? 'через 1 виток', ax + 8, ay - 6);
   }
 
   if (returnPt) {

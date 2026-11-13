@@ -74,8 +74,35 @@ export function timeAtLaunchPhase(mission, N) {
 }
 
 /**
+ * Кратчайшее расстояние подспутниковой точки до старта на участке орбиты
+ * [Tasc, Tasc + orbits·T] — без t=0 на стартовой площадке (там всегда 0).
+ * «Первый–полуторный виток» ≈ orbits=1.5.
+ */
+export function closestApproachOnOrbit(mission, orbits = 1.5, nSamples = 900) {
+  const { Tasc, Torb, lat0, lon0 } = mission;
+  const t0 = Tasc;
+  const t1 = Tasc + orbits * Torb;
+  let best = null;
+  for (let k = 0; k <= nSamples; k++) {
+    const t = t0 + ((t1 - t0) * k) / nSamples;
+    const s = stateAt(mission, t);
+    const missKm = haversine(lat0, lon0, s.lat, s.lon, R_EARTH) / 1000;
+    if (!best || missKm < best.missKm) {
+      best = {
+        missKm,
+        t,
+        lat: s.lat,
+        lon: s.lon,
+        orbitsFromInsert: (t - Tasc) / Torb,
+      };
+    }
+  }
+  return best;
+}
+
+/**
  * Сводка. Важно: «промах после N витков у точки вставки» ≠ «промах над стартом».
- * Для старта смотрим фазу u=u0 (afterNAtLaunchPhase).
+ * Для старта смотрим фазу u=u0; плюс closestOnFirstOrbit — min по дуге ~1,5 витка.
  */
 export function closureReport(mission) {
   const { Torb, lat0, lon0, Tasc, duAsc } = mission;
@@ -105,6 +132,8 @@ export function closureReport(mission) {
     t: Math.max(t1, Tasc),
   };
 
+  const closest15 = closestApproachOnOrbit(mission, 1.5);
+
   const nClose = perDay.n; // учебный N: round(T_sid/T); точный резонанс — пресеты
   const tN = timeAtLaunchPhase(mission, nClose);
   const sN = stateAt(mission, Math.max(tN, Tasc));
@@ -126,6 +155,7 @@ export function closureReport(mission) {
     returnsAfterOneOrbit: returnsOne,
     afterOneOrbit,
     afterOneAtInsertion,
+    closestOnFirstOrbit: closest15,
     ascentDownrangeDeg: (duAsc * 180) / Math.PI,
     orbitsToLonRepeat: nClose,
     orbitsPerDayFloat: perDay.nFloat,

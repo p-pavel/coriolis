@@ -102,12 +102,13 @@ function el(tag, cls, html) {
   return e;
 }
 
-export function slider(parent, { label, min, max, step, value, fmt = (v) => num(v), hint, onInput, scale = 'lin' }) {
+export function slider(parent, { label, min, max, step, value, fmt = (v) => num(v), hint, onInput, scale = 'lin', text = false }) {
   const wrap = el('div', 'ctl');
   const lab = el('label');
   const name = el('span', null, label);
   const val = el('span', 'val');
   lab.append(name, val);
+  const row = el('div', 'ctl-row');
   const inp = el('input');
   inp.type = 'range';
   // Больше делений на дорожке → стрелки/клик дают более мелкий шаг (тонкая настройка).
@@ -122,44 +123,86 @@ export function slider(parent, { label, min, max, step, value, fmt = (v) => num(
     inp.max = toPos(hi);
     if (scale === 'log') inp.step = (toPos(hi) - toPos(lo)) / logDivs;
     else inp.step = st === 'any' ? 'any' : st;
+    if (numInp) {
+      numInp.min = lo;
+      numInp.max = hi;
+      numInp.step = st === 'any' ? 'any' : st;
+    }
   };
+  let numInp = null;
   applyRange();
   inp.value = toPos(value);
-  wrap.append(lab, inp);
+  row.append(inp);
+  if (text) {
+    numInp = el('input', 'ctl-num');
+    numInp.type = 'number';
+    numInp.min = lo;
+    numInp.max = hi;
+    numInp.step = st === 'any' ? 'any' : st;
+    numInp.title = 'Точный ввод';
+    row.append(numInp);
+  }
+  wrap.append(lab, row);
   if (hint) wrap.append(el('div', 'hint', hint));
   parent.append(wrap);
   let current = value;
-  const update = () => {
-    let v = fromPos(+inp.value);
+  let syncing = false;
+  const snap = (v) => {
     if (scale === 'log' && st && st !== 'any') v = Math.round(v / st) * st;
-    else if (scale === 'lin' && st && st !== 'any') {
-      v = Math.round(v / st) * st;
-      const a = Math.min(lo, hi);
-      const b = Math.max(lo, hi);
-      v = Math.min(b, Math.max(a, v));
+    else if (scale === 'lin' && st && st !== 'any') v = Math.round(v / st) * st;
+    const a = Math.min(lo, hi);
+    const b = Math.max(lo, hi);
+    return Math.min(b, Math.max(a, v));
+  };
+  const update = () => {
+    current = snap(fromPos(+inp.value));
+    val.textContent = fmt(current);
+    if (numInp && !syncing) {
+      syncing = true;
+      numInp.value = String(current);
+      syncing = false;
     }
-    current = v;
-    val.textContent = fmt(v);
+  };
+  const commit = (v) => {
+    current = snap(v);
+    inp.value = toPos(current);
+    update();
+    onInput && onInput(current);
   };
   inp.addEventListener('input', () => {
     update();
     onInput && onInput(current);
   });
+  if (numInp) {
+    numInp.addEventListener('change', () => {
+      if (syncing) return;
+      const v = parseFloat(numInp.value);
+      if (!Number.isFinite(v)) {
+        numInp.value = String(current);
+        return;
+      }
+      commit(v);
+    });
+    numInp.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') numInp.blur();
+    });
+  }
   update();
   return {
     get value() {
       return current;
     },
     set value(v) {
+      syncing = true;
       inp.value = toPos(v);
       update();
+      syncing = false;
     },
     setRange(min2, max2, step2) {
       lo = min2;
       hi = max2;
       if (step2 != null) st = step2;
       applyRange();
-      // clamp current into new range
       const a = Math.min(lo, hi);
       const b = Math.max(lo, hi);
       if (current < a || current > b) {

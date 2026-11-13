@@ -30,6 +30,7 @@ let mission = null;
 let trackFull = null;
 let returnPt = null;
 let afterOnePt = null;
+let closestPt = null;
 let lastRep = null;
 
 select(ctl, {
@@ -73,6 +74,7 @@ const latSl = slider(ctl, {
   step: 0.05,
   value: (lat * 180) / Math.PI,
   fmt: (v) => `${fixed(v, 2)}°`,
+  text: true,
   onInput: (v) => {
     siteKey = 'custom';
     lat = rad(v);
@@ -87,6 +89,7 @@ const lonSl = slider(ctl, {
   step: 0.1,
   value: (lon * 180) / Math.PI,
   fmt: (v) => `${fixed(v, 1)}°`,
+  text: true,
   onInput: (v) => {
     siteKey = 'custom';
     lon = rad(v);
@@ -101,7 +104,8 @@ const hSl = slider(ctl, {
   step: 1,
   value: hKm,
   fmt: (v) => `${num(v, 4)} км`,
-  hint: 'НОО: период десятки минут. Стрелки клавиатуры — по 1 км',
+  text: true,
+  hint: 'НОО: период десятки минут. Поле справа — точный ввод',
   onInput: (v) => {
     hKm = v;
     rebuild();
@@ -115,7 +119,8 @@ const iSl = slider(ctl, {
   step: 0.05,
   value: iDeg,
   fmt: (v) => `${fixed(v, 2)}°`,
-  hint: 'Нельзя меньше широты старта без смены плоскости. Стрелки — по 0,05°',
+  text: true,
+  hint: 'Нельзя меньше широты старта без смены плоскости',
   onInput: (v) => {
     iDeg = v;
     rebuild();
@@ -129,6 +134,7 @@ slider(ctl, {
   step: 0.1,
   value: TascMin,
   fmt: (v) => `${fixed(v, 1)} мин`,
+  text: true,
   hint: 'Кинематическая схема разгона (не баллистика). Для GEO за минуты — заведомо не физично; смотрите трассу, не Δv',
   onInput: (v) => {
     TascMin = v;
@@ -332,6 +338,7 @@ function rebuild() {
     trackFull = [];
     returnPt = null;
     afterOnePt = null;
+    closestPt = null;
     lastRep = null;
     redraw(0);
     return;
@@ -356,17 +363,24 @@ function rebuild() {
     lon: rep.afterOneOrbit.lon,
     label: 'через 1 виток',
   };
+  closestPt = rep.closestOnFirstOrbit
+    ? {
+        lat: rep.closestOnFirstOrbit.lat,
+        lon: rep.closestOnFirstOrbit.lon,
+        label: `ближ. ${num(rep.closestOnFirstOrbit.missKm, 3)} км`,
+      }
+    : null;
 
   if (mode === 'one') {
     verdict.className = 'verdict ' + (rep.returnsAfterOneOrbit ? 'warn' : 'bad');
     verdict.innerHTML = rep.returnsAfterOneOrbit
       ? 'Период почти равен сидерическим суткам — это уже не НОО. За один виток долгота сходится (см. режим «Возможности»).'
       : `<b>За один виток на НОО — не над стартом.</b> Земля поворачивается на
-      ${fixed(rep.earthTurnPerOrbitDeg, 1)}°, сдвиг долготы
-      ${fixed(rep.dLonPerOrbitDeg, 1)}° (промах ~${num(rep.afterOneOrbit.missKm, 3)} км).
-      Это про <em>пролёт</em> подспутниковой точки, не про посадку.
-      Пролететь над районом старта <em>без посадки</em> можно позже (~сутки / N витков) —
-      режим «Возможности». Сесть обратно — отдельная задача (торможение, вход, крест-рейндж).`;
+      ${fixed(rep.earthTurnPerOrbitDeg, 1)}°, Δλ = ${fixed(rep.dLonPerOrbitDeg, 1)}°.
+      Кратчайшее расстояние трассы к старту за первые ~1,5 витка после выхода на орбиту:
+      <b>${num(rep.closestOnFirstOrbit.missKm, 3)} км</b>
+      (на карте — метка «ближ.»; «промах через 1 виток» — в той же фазе, что старт).
+      Пролететь над районом <em>без посадки</em> позже — режим «Возможности».`;
   } else if (rep.afterNOrbits) {
     const a = rep.afterNOrbits;
     const leo = mission.h < 2000e3;
@@ -400,10 +414,14 @@ function rebuild() {
     ['Высота', len(mission.h)],
     ['Период', period(mission.Torb)],
     ['Период / сидерические сутки', num(rep.periodVsSidereal, 3)],
-    '#Один виток (фаза старта)',
+    '#Один–полтора витка',
     ['Поворот Земли за виток', `${fixed(rep.earthTurnPerOrbitDeg, 2)}°`],
     ['Сдвиг долготы трассы Δλ', `${fixed(rep.dLonPerOrbitDeg, 2)}°`],
-    ['Промах над стартом', `${num(rep.afterOneOrbit.missKm, 3)} км`],
+    [
+      'Кратчайшее до старта (1,5 витка)',
+      `${num(rep.closestOnFirstOrbit.missKm, 3)} км @ ${num(rep.closestOnFirstOrbit.orbitsFromInsert, 3)} вит.`,
+    ],
+    ['Промах в фазе старта (ровно 1 виток)', `${num(rep.afterOneOrbit.missKm, 3)} км`],
     ['Промах у точки вставки', `${num(rep.afterOneAtInsertion.missKm, 3)} км`],
     '#Возврат ~N витков / сутки',
     ['N ≈ T_sid/T', `${rep.orbitsToLonRepeat} (точно ${num(rep.orbitsPerDayFloat, 4)})`],
@@ -440,6 +458,7 @@ function redraw(t) {
   const mapOpts = {
     returnPt: ret,
     afterOne: afterOnePt,
+    closest: closestPt,
     ghost: showFull ? trackFull : null,
   };
   const globeOpts = { returnPt: ret, ghost: showFull ? trackFull : null };
