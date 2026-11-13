@@ -94,7 +94,8 @@ export function drawFlatMap(canvas, track, site, opts = {}) {
     ctx.fill();
     ctx.font = '12px system-ui';
     ctx.fillStyle = '#ff7272';
-    ctx.fillText(opts.afterOne.label ?? 'через 1 виток', ax + 8, ay - 4);
+    const lab = opts.afterOne.label ?? 'через 1 виток';
+    ctx.fillText(lab, ax + 8, ay - 6);
     if (site) {
       const [sx, sy] = lonLatToMap(site.lon, site.lat, w, h);
       ctx.strokeStyle = 'rgba(255,114,114,0.55)';
@@ -171,7 +172,8 @@ export function drawGlobe(canvas, track, site, mission, view = { yaw: 0.6, pitch
     // pitch around x: 0 → смотрим вдоль −y (экватор в фас)
     const y2 = y1 * cp - z1 * sp;
     const z2 = y1 * sp + z1 * cp;
-    return { x: cx + R * x1, y: cy - R * z2, z: y2, front: y2 > -0.02 };
+    // Зеркало по X: восток справа при взгляде снаружи (как на привычных глобусах).
+    return { x: cx - R * x1, y: cy - R * z2, z: y2, front: y2 > -0.02 };
   };
 
   // Сетка

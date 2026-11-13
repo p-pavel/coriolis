@@ -110,11 +110,20 @@ export function slider(parent, { label, min, max, step, value, fmt = (v) => num(
   lab.append(name, val);
   const inp = el('input');
   inp.type = 'range';
+  // Больше делений на дорожке → стрелки/клик дают более мелкий шаг (тонкая настройка).
+  const logDivs = 1000;
   const toPos = (v) => (scale === 'log' ? Math.log(v) : v);
   const fromPos = (p) => (scale === 'log' ? Math.exp(p) : p);
-  inp.min = toPos(min);
-  inp.max = toPos(max);
-  inp.step = scale === 'log' ? (toPos(max) - toPos(min)) / 400 : step;
+  let lo = min;
+  let hi = max;
+  let st = step;
+  const applyRange = () => {
+    inp.min = toPos(lo);
+    inp.max = toPos(hi);
+    if (scale === 'log') inp.step = (toPos(hi) - toPos(lo)) / logDivs;
+    else inp.step = st === 'any' ? 'any' : st;
+  };
+  applyRange();
   inp.value = toPos(value);
   wrap.append(lab, inp);
   if (hint) wrap.append(el('div', 'hint', hint));
@@ -122,7 +131,13 @@ export function slider(parent, { label, min, max, step, value, fmt = (v) => num(
   let current = value;
   const update = () => {
     let v = fromPos(+inp.value);
-    if (scale === 'log' && step) v = Math.round(v / step) * step;
+    if (scale === 'log' && st && st !== 'any') v = Math.round(v / st) * st;
+    else if (scale === 'lin' && st && st !== 'any') {
+      v = Math.round(v / st) * st;
+      const a = Math.min(lo, hi);
+      const b = Math.max(lo, hi);
+      v = Math.min(b, Math.max(a, v));
+    }
     current = v;
     val.textContent = fmt(v);
   };
@@ -137,6 +152,20 @@ export function slider(parent, { label, min, max, step, value, fmt = (v) => num(
     },
     set value(v) {
       inp.value = toPos(v);
+      update();
+    },
+    setRange(min2, max2, step2) {
+      lo = min2;
+      hi = max2;
+      if (step2 != null) st = step2;
+      applyRange();
+      // clamp current into new range
+      const a = Math.min(lo, hi);
+      const b = Math.max(lo, hi);
+      if (current < a || current > b) {
+        current = Math.min(b, Math.max(a, current));
+        inp.value = toPos(current);
+      }
       update();
     },
     el: wrap,

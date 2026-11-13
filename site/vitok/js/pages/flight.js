@@ -70,9 +70,9 @@ const latSl = slider(ctl, {
   label: 'Широта старта',
   min: -70,
   max: 70,
-  step: 0.1,
+  step: 0.05,
   value: (lat * 180) / Math.PI,
-  fmt: (v) => `${fixed(v, 1)}°`,
+  fmt: (v) => `${fixed(v, 2)}°`,
   onInput: (v) => {
     siteKey = 'custom';
     lat = rad(v);
@@ -84,7 +84,7 @@ const lonSl = slider(ctl, {
   label: 'Долгота старта',
   min: -180,
   max: 180,
-  step: 0.5,
+  step: 0.1,
   value: (lon * 180) / Math.PI,
   fmt: (v) => `${fixed(v, 1)}°`,
   onInput: (v) => {
@@ -98,10 +98,10 @@ const hSl = slider(ctl, {
   label: 'Высота круговой орбиты',
   min: 200,
   max: 2000,
-  step: 10,
+  step: 1,
   value: hKm,
-  fmt: (v) => `${num(v, 3)} км`,
-  hint: 'НОО: период десятки минут',
+  fmt: (v) => `${num(v, 4)} км`,
+  hint: 'НОО: период десятки минут. Стрелки клавиатуры — по 1 км',
   onInput: (v) => {
     hKm = v;
     rebuild();
@@ -112,10 +112,10 @@ const iSl = slider(ctl, {
   label: 'Наклонение',
   min: 0,
   max: 98,
-  step: 0.1,
+  step: 0.05,
   value: iDeg,
-  fmt: (v) => `${fixed(v, 1)}°`,
-  hint: 'Нельзя меньше широты старта без смены плоскости',
+  fmt: (v) => `${fixed(v, 2)}°`,
+  hint: 'Нельзя меньше широты старта без смены плоскости. Стрелки — по 0,05°',
   onInput: (v) => {
     iDeg = v;
     rebuild();
@@ -126,7 +126,7 @@ slider(ctl, {
   label: 'Длительность разгона',
   min: 4,
   max: 20,
-  step: 0.5,
+  step: 0.1,
   value: TascMin,
   fmt: (v) => `${fixed(v, 1)} мин`,
   hint: 'Кинематическая схема разгона (не баллистика). Для GEO за минуты — заведомо не физично; смотрите трассу, не Δv',
@@ -153,18 +153,14 @@ const presetBox = document.createElement('div');
 presetBox.className = 'btns';
 ctl.append(presetBox);
 
-const hInp = hSl.el.querySelector('input[type=range]');
-const nInp = nSl.el.querySelector('input[type=range]');
 const hHint = hSl.el.querySelector('.hint');
 
 function setHeightRange(min, max, step) {
-  hInp.min = min;
-  hInp.max = max;
-  hInp.step = step;
+  hSl.setRange(min, max, step);
 }
 
 function setOrbitShowMax(max) {
-  nInp.max = max;
+  nSl.setRange(1, max, 1);
   if (nOrbitsShow > max) {
     nOrbitsShow = max;
     nSl.value = max;
@@ -174,14 +170,13 @@ function setOrbitShowMax(max) {
 /** Высота, при которой N·ω_E·T = 2π (ровно N витков на сидерические сутки). */
 function applyRepeatPreset(N) {
   const { h } = circularForRepeatOrbits(N);
-  // Точная высота резонанса (не округлять step’ом слайдера — иначе GEO «плывёт»).
+  // Точная высота резонанса: временно step=any, чтобы GEO не «уплыл».
   hKm = h / 1000;
-  const inp = hSl.el.querySelector('input[type=range]');
-  const prevStep = inp.step;
-  inp.step = 'any';
+  hSl.setRange(200, Math.ceil(H_GEO_KM + 100), 'any');
   hSl.value = hKm;
-  inp.step = prevStep;
-  nOrbitsShow = Math.min(+nInp.max, Math.max(N + 1, 2));
+  hSl.setRange(200, Math.ceil(H_GEO_KM + 100), mode === 'one' ? 1 : 5);
+  const nMax = mode === 'explore' ? 24 : 16;
+  nOrbitsShow = Math.min(nMax, Math.max(N + 1, 2));
   nSl.value = nOrbitsShow;
 }
 
@@ -197,7 +192,7 @@ function applyModeDefaults() {
     nSl.value = 3;
     if (hHint) hHint.textContent = 'Режим НОО (до 2000 км): за один виток в старт не попасть';
   } else {
-    setHeightRange(200, Math.ceil(H_GEO_KM + 100), 1);
+    setHeightRange(200, Math.ceil(H_GEO_KM + 100), 5);
     setOrbitShowMax(24);
     if (hHint)
       hHint.textContent = `T = T_sid/N; GEO (N=1) ≈ ${num(H_GEO_KM, 4)} км. Пресеты ставят точную высоту резонанса.`;
@@ -248,7 +243,7 @@ slider(ctl, {
   label: 'Ускорение анимации',
   min: 5,
   max: 2000,
-  step: 5,
+  step: 1,
   value: animSpeed,
   scale: 'log',
   fmt: (v) => `×${num(v, 3)}`,
@@ -258,11 +253,33 @@ slider(ctl, {
   },
 });
 
+let syncingScrub = false;
+const tSl = slider(ctl, {
+  label: 'Ход анимации',
+  min: 0,
+  max: 1,
+  step: 1,
+  value: 0,
+  fmt: (v) => period(v),
+  hint: 'Положение на заданный момент; двигаете — анимация встаёт на паузу',
+  onInput: (v) => {
+    if (syncingScrub) return;
+    tShow = v;
+    if (playing) {
+      playing = false;
+      playBtn.textContent = 'Пуск';
+      playBtn.classList.add('on');
+    }
+    redraw(tShow);
+  },
+});
+
 const btns = document.createElement('div');
 btns.className = 'btns';
 ctl.append(btns);
 button(btns, 'Сброс анимации', () => {
   tShow = 0;
+  syncScrubber();
   redraw(tShow);
 });
 const playBtn = button(btns, 'Пауза', () => {
@@ -270,6 +287,15 @@ const playBtn = button(btns, 'Пауза', () => {
   playBtn.textContent = playing ? 'Пауза' : 'Пуск';
   playBtn.classList.toggle('on', !playing);
 });
+
+function syncScrubber() {
+  if (!mission?.ok) return;
+  const tEnd = Math.max(1, mission.Tasc + nDrawCount() * mission.Torb);
+  syncingScrub = true;
+  tSl.setRange(0, tEnd, Math.max(1, tEnd / 2000));
+  tSl.value = Math.min(tShow, tEnd);
+  syncingScrub = false;
+}
 
 const timeReadout = document.createElement('p');
 timeReadout.className = 'muted small';
@@ -335,27 +361,30 @@ function rebuild() {
     verdict.className = 'verdict ' + (rep.returnsAfterOneOrbit ? 'warn' : 'bad');
     verdict.innerHTML = rep.returnsAfterOneOrbit
       ? 'Период почти равен сидерическим суткам — это уже не НОО. За один виток долгота сходится (см. режим «Возможности»).'
-      : `<b>На НОО за один виток в точку старта не попасть.</b> Земля за период орбиты поворачивается на
-      ${fixed(rep.earthTurnPerOrbitDeg, 1)}°, сдвиг долготы трассы
-      ${fixed(rep.dLonPerOrbitDeg, 1)}° (промах в фазе старта ~${num(rep.afterOneOrbit.missKm, 3)} км).
-      Переключите на «Возможности»: GEO (N=1), 12 ч, или ~сутки на НОО.`;
+      : `<b>За один виток на НОО — не над стартом.</b> Земля поворачивается на
+      ${fixed(rep.earthTurnPerOrbitDeg, 1)}°, сдвиг долготы
+      ${fixed(rep.dLonPerOrbitDeg, 1)}° (промах ~${num(rep.afterOneOrbit.missKm, 3)} км).
+      Это про <em>пролёт</em> подспутниковой точки, не про посадку.
+      Пролететь над районом старта <em>без посадки</em> можно позже (~сутки / N витков) —
+      режим «Возможности». Сесть обратно — отдельная задача (торможение, вход, крест-рейндж).`;
   } else if (rep.afterNOrbits) {
     const a = rep.afterNOrbits;
     const leo = mission.h < 2000e3;
     if (a.n === 1) {
       verdict.className = 'verdict';
-      verdict.innerHTML = `<b>N = 1 — геосинхрон:</b> период ≈ сидерические сутки, высота
-        ${len(mission.h)}. За <em>один</em> виток долгота снова та же — это «один виток», но не НОО.
-        С широты ${angleDeg(lat)} без смены плоскости — наклонная GSO (не геостационар i=0).
-        Промах в фазе старта ~${num(a.missKm, 3)} км (схематический разгон).`;
+      verdict.innerHTML = `<b>N = 1 — геосинхрон:</b> за один виток снова та же долгота (не НОО, h ≈ ${len(mission.h)}).
+        Это снова <em>пролёт</em> / зависание трассы, не посадка.
+        С широты ${angleDeg(lat)} — наклонная GSO (геостационар i=0 без смены плоскости нельзя).
+        Промах модели ~${num(a.missKm, 3)} км.`;
     } else {
       verdict.className = 'verdict';
-      verdict.innerHTML = `<b>Возможность: ~${a.n} витков за сутки</b> (N ≈ T<sub>sid</sub>/T = ${num(rep.orbitsPerDayFloat, 3)};
-        остаток по долготе ${fixed(a.residualDeg, 2)}°).
-        Промах в <em>фазе старта</em> ~${num(a.missKm, 3)} км
-        (не путать с точкой вставки: вниз по трассе ещё ~${fixed(rep.ascentDownrangeDeg, 1)}°).
-        ${leo ? 'НОО: порядка суток.' : 'Выше НОО: меньше N; Δv в таблице — не бюджет перелёта на GEO.'}
-        Пресеты задают точный резонанс T=T<sub>sid</sub>/N.`;
+      verdict.innerHTML = `<b>Да: пролететь над стартом можно</b> — без посадки, после ~${a.n} витков
+        (N ≈ T<sub>sid</sub>/T = ${num(rep.orbitsPerDayFloat, 3)}, остаток ${fixed(a.residualDeg, 2)}°).
+        Подспутниковая точка снова у старта; корабль при этом остаётся на орбите.
+        Промах в фазе старта ~${num(a.missKm, 3)} км
+        (дуга разгона ~${fixed(rep.ascentDownrangeDeg, 1)}°).
+        ${leo ? 'На НОО это порядка суток.' : 'Выше НОО — меньше N; Δv в таблице не бюджет на GEO.'}
+        Посадка = ещё Δv и атмосфера — здесь не моделируем.`;
     }
   } else {
     verdict.className = 'verdict warn';
@@ -394,6 +423,7 @@ function rebuild() {
     ],
   ]);
   tShow = Math.min(tShow, tEnd);
+  syncScrubber();
   redraw(tShow);
 }
 
@@ -417,6 +447,11 @@ function redraw(t) {
   drawGlobe(globeCanvas, visible, site, mission, view, globeOpts);
   const tEnd = mission.Tasc + nDrawCount() * mission.Torb;
   timeReadout.textContent = `Время полёта: ${period(t)} / ${period(tEnd)} (ускорение ×${num(animSpeed, 3)})`;
+  if (!syncingScrub && playing) {
+    syncingScrub = true;
+    tSl.value = t;
+    syncingScrub = false;
+  }
 }
 
 let drag = null;
