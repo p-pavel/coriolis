@@ -19,7 +19,7 @@ jobs:
       contents: read
     steps:
       - uses: actions/checkout@v7
-      - run: node --version && node --test
+      - run: node --version && npm test
       - uses: actions/upload-pages-artifact@v5
         with:
           path: site

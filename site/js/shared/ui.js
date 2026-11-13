@@ -1,37 +1,10 @@
-// Общие элементы страниц: навигация, подвал, формулы (KaTeX), форматирование, контролы.
+// Общий UI для песочниц «Зелёного кота»: KaTeX, формат, контролы, canvas.
 
 export const REPO_URL = 'https://github.com/p-pavel/coriolis';
 
-const PAGES = [
-  ['index.html', 'Главная', 'home'],
-  ['tether.html', 'Два корабля на тросе', 'tether'],
-  ['apple.html', 'Яблоко', 'apple'],
-  ['climb.html', 'Переход по тросу', 'climb'],
-  ['ring.html', 'Кольцо', 'ring'],
-  ['physics.html', 'Физика', 'physics'],
-  ['verify.html', 'Проверка', 'verify'],
-];
-
 const KATEX = 'https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/';
 
-export function initPage(active) {
-  const header = document.createElement('header');
-  header.className = 'site';
-  const items = PAGES.slice(1)
-    .map(([href, title, id]) => `<a class="item${id === active ? ' active' : ''}" href="${href}">${title}</a>`)
-    .join('');
-  header.innerHTML = `<nav><a class="brand" href="index.html">Кориолис</a>${items}</nav>`;
-  document.body.prepend(header);
-
-  const footer = document.createElement('footer');
-  footer.innerHTML = `Песочница искусственной тяжести. Физика открыта и проверяема:
-    <a href="verify.html">проверки</a> · <a href="physics.html">выводы формул</a> ·
-    <a href="${REPO_URL}">исходный код</a>`;
-  document.body.append(footer);
-  loadKatex();
-}
-
-function loadKatex() {
+export function loadKatex() {
   if (!document.querySelector('.math, [data-math]') && !/\\\(|\$\$/.test(document.body.innerHTML)) return;
   const css = document.createElement('link');
   css.rel = 'stylesheet';
@@ -55,7 +28,27 @@ function loadKatex() {
   document.head.append(s1);
 }
 
-// --- форматирование ---------------------------------------------------------
+/**
+ * Шапка и подвал. pages: [[href, title, id], ...] (без главной проекта).
+ * hubHref — ссылка на общий индекс дискуссий.
+ */
+export function mountChrome({ brand, brandHref, pages, active, footerHtml, hubHref = '../index.html', hubLabel = 'Зелёный кот' }) {
+  const header = document.createElement('header');
+  header.className = 'site';
+  const items = pages
+    .map(([href, title, id]) => `<a class="item${id === active ? ' active' : ''}" href="${href}">${title}</a>`)
+    .join('');
+  header.innerHTML = `<nav>
+    <a class="brand" href="${brandHref}">${brand}</a>${items}
+    <a class="item hub" href="${hubHref}">${hubLabel}</a>
+  </nav>`;
+  document.body.prepend(header);
+
+  const footer = document.createElement('footer');
+  footer.innerHTML = footerHtml;
+  document.body.append(footer);
+  loadKatex();
+}
 
 const nfCache = new Map();
 function nf(d) {
@@ -98,7 +91,9 @@ export function period(s) {
   return `${num(s, 3)} с`;
 }
 
-// --- контролы ---------------------------------------------------------------
+export function angleDeg(rad, d = 2) {
+  return `${fixed((rad * 180) / Math.PI, d)}°`;
+}
 
 function el(tag, cls, html) {
   const e = document.createElement(tag);
@@ -107,9 +102,6 @@ function el(tag, cls, html) {
   return e;
 }
 
-/**
- * Ползунок. scale: 'lin' | 'log'. fmt — подпись значения.
- */
 export function slider(parent, { label, min, max, step, value, fmt = (v) => num(v), hint, onInput, scale = 'lin' }) {
   const wrap = el('div', 'ctl');
   const lab = el('label');
@@ -183,7 +175,6 @@ export function button(parent, text, onClick, cls) {
   return b;
 }
 
-/** Таблица «название — значение». rows: [[name, value]] или ['#Раздел']. */
 export function kvTable(target, rows) {
   target.innerHTML =
     '<table class="kv">' +
@@ -193,7 +184,6 @@ export function kvTable(target, rows) {
     '</table>';
 }
 
-/** Подогнать разрешение canvas под CSS-размер и плотность пикселей. */
 export function fitCanvas(canvas, aspect) {
   const dpr = window.devicePixelRatio || 1;
   const w = canvas.clientWidth;

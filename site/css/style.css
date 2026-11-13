@@ -272,6 +272,7 @@ canvas.view {
   border: 1px solid var(--line);
   border-radius: 10px;
   display: block;
+  touch-action: none;
 }
 
 .formula {
@@ -431,4 +432,10 @@ code {
   background: #1a2130;
   padding: 0.05em 0.3em;
   border-radius: 4px;
+}
+
+
+header.site a.item.hub {
+  margin-left: auto;
+  color: var(--warm);
 }

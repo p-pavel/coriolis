@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Полёт — Один виток</title>
+  <link rel="stylesheet" href="../css/style.css">
+</head>
+<body>
+<main>
+  <h1>Полёт: подспутниковая точка</h1>
+  <p class="lead">
+    Сначала — что <em>невозможно</em> (НОО за один виток). Затем — возможности: геосинхрон (N=1),
+    12‑часовая орбита, сутки на НОО и промежуточные N. Наклонение и старт — как раньше.
+  </p>
+
+  <div class="grid2">
+    <div>
+      <div class="panel" id="controls"></div>
+      <div id="verdict" class="verdict"></div>
+      <div id="kv"></div>
+      <p class="legend">
+        <i style="background:#7ee08a"></i> старт
+        <i style="background:#ff7272"></i> через 1 виток
+        <i style="background:#ffb86b"></i> разгон
+        <i style="background:#7fd1ff"></i> орбита
+        <i style="background:#ffd166"></i> возврат после N витков
+      </p>
+    </div>
+    <div>
+      <h3>Плоская карта</h3>
+      <canvas id="map" class="view"></canvas>
+      <h3>Глобус <span class="muted small">(тяните мышью)</span></h3>
+      <canvas id="globe" class="view"></canvas>
+    </div>
+  </div>
+</main>
+<script type="module" src="js/pages/flight.js"></script>
+</body>
+</html>

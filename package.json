@@ -2,10 +2,10 @@
   "name": "coriolis",
   "private": true,
   "type": "module",
-  "description": "Песочница искусственной тяжести: два корабля на тросе, кольцевая станция",
+  "description": "Дискуссии у Зелёного кота: Кориолис (искусственная тяжесть) и Один виток (НОО / подспутниковая точка)",
   "scripts": {
-    "test": "node --test",
-    "checks": "node test/report.js",
+    "test": "node --test test/coriolis/checks.test.js test/vitok/checks.test.js",
+    "checks": "node scripts/report.js",
     "serve": "python3.12 -m http.server -d site 8000"
   }
 }
